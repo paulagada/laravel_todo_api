@@ -5,14 +5,13 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Todo extends Model
+class AssignTodo extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'title',
-        'description',
-        'completed'
+        'user_id',
+        'todo_id'
     ];
 
     public function user()
@@ -20,12 +19,9 @@ class Todo extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function assignedUsers()
+    public function todo()
      {
-        return $this->hasMany(AssignTodo::class);
+        return $this->belongsTo(Todo::class);
     }
 
-    protected $casts = [
-        'completed' => 'boolean',
-    ];
 }

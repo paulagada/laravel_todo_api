@@ -52,4 +52,9 @@ class User extends Authenticatable implements CanResetPassword
      {
         return $this->hasMany(Todo::class);
     }
+
+    public function assignedTodos()
+     {
+        return $this->hasMany(AssignTodo::class);
+    }
 }

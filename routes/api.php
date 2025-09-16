@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AssignTodoController;
 use App\Http\Controllers\Auth\AuthenticationController;
 use App\Http\Controllers\TodoController;
 use Illuminate\Http\Request;
@@ -25,4 +26,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('todos', [TodoController::class, 'store']);
     Route::put('todos/{todo}', [TodoController::class, 'update']);
     Route::delete('todos/{todo}', [TodoController::class, 'destroy']);
+    Route::post('todos/{todo}/assign', [AssignTodoController::class, 'assignTodoToUser']);
+    Route::get('todos/{todo}/assign/users', [AssignTodoController::class, 'getTodoAssignUsers']);
+    Route::get('todos/assign', [AssignTodoController::class, 'getUserAssignTodos']);
+    Route::post('todos/{todo}/complete', [AssignTodoController::class, 'updateCompleteTodo']);
+    Route::delete('todos/{todo}/assign', [AssignTodoController::class, 'deleteAssignedUser']);
 });
