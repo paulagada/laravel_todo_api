@@ -2,27 +2,31 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\AssignCompleteNotice;
-use App\Mail\AssignNotice;
-use App\Models\assignTodo;
 use App\Models\Todo;
 use App\Models\User;
+use App\Mail\AssignNotice;
+use App\Models\assignTodo;
+use App\Models\DeviceToken;
+use App\Services\FCMService;
 use Illuminate\Http\Request;
+use App\Mail\AssignCompleteNotice;
 use Illuminate\Support\Facades\Mail;
+use App\Jobs\SendAssignNotificationJob;
 
 class AssignTodoController extends Controller
 {
-    public function assignTodoToUser(Request $request, Todo $todo) {
-        
+    public function assignTodoToUser(Request $request, Todo $todo)
+    {
+
         $user = User::where('email', $request->email)->first();
         if (!$user) {
             return response([
                 'message' => "User not found",
-            ], 400); 
+            ], 400);
         }
 
         $assignTodo = AssignTodo::where('user_id', $user->id)
-                                ->where('todo_id', $todo->id)->first();
+            ->where('todo_id', $todo->id)->first();
         if ($assignTodo) {
             return response([
                 'message' => "User already assigned to todo",
@@ -36,40 +40,52 @@ class AssignTodoController extends Controller
             'todo_id' => $todo->id,
         ];
         assignTodo::create($assignData);
-        Mail::to($request->email)->send(new AssignNotice($userEmail, $assignerMail, $todoTitle, true));
 
+        // Send Email
+        SendAssignNotificationJob::dispatch(
+            $user->email,
+            $request->user()->email,
+            $todo->title,
+            $user->id,
+            $request->user()->id,
+            $todo->id
+        );
         return response([
             'message' => "Todo Assigned to $userEmail",
-        ], 201);   
+            // "result" => $result
+        ], 201);
     }
 
-    public function getTodoAssignUsers(Todo $todo) {
+    public function getTodoAssignUsers(Todo $todo)
+    {
         $assignedTodos = $todo->assignedUsers()->get();
 
-        $emails =[];
+        $emails = [];
 
         foreach ($assignedTodos as $assignedTodo) {
             $user = User::find($assignedTodo->user_id);
-            if($user) {
+            if ($user) {
                 $emails[] = [
                     "id" => $assignedTodo->id,
-                    "email" => $user->email];
+                    "email" => $user->email
+                ];
             }
         }
         return response()->json($emails);
     }
 
-    public function getUserAssignTodos(Request $request) {
+    public function getUserAssignTodos(Request $request)
+    {
         $assignedTodos = $request->user()->assignedTodos()->get();
 
-        $todos =[];
+        $todos = [];
 
         foreach ($assignedTodos as $assignedTodo) {
             $todo = Todo::find($assignedTodo->todo_id);
             $userEmail = User::where('id', $todo->user_id)->first()->email;
-            if($todo) {
+            if ($todo) {
                 $todos[] = [
-                    "id"=> $todo->id,
+                    "id" => $todo->id,
                     "title" =>  $todo->title,
                     "description" => $todo->description,
                     "completed" => $todo->completed,
@@ -80,15 +96,16 @@ class AssignTodoController extends Controller
         return response()->json($todos);
     }
 
-    public function deleteAssignedUser(Todo $todo, Request $request) {
+    public function deleteAssignedUser(Todo $todo, Request $request)
+    {
         $userId = User::where('email', $request->email)->first()->id;
         $assignTodo = AssignTodo::where('user_id', $userId)
-                                ->where('todo_id', $todo->id)->first();
-                
+            ->where('todo_id', $todo->id)->first();
+
         if (!$assignTodo) {
             return response([
                 'message' => "not found",
-            ], 400); 
+            ], 400);
         }
 
         $assignerMail = $request->user()->email;
@@ -97,12 +114,37 @@ class AssignTodoController extends Controller
         $assignTodo->delete();
         Mail::to($request->email)->send(new AssignNotice($userEmail, $assignerMail, $todoTitle, false));
         // $request->todo()->assignedUsers->create($request->all);
+
+        // ----- NEW: send push notification via FCM -----
+        $tokens = DeviceToken::where('user_id', $userId)->pluck('token')->toArray();
+
+        if (!empty($tokens)) {
+            /** @var FCMService $fcm */
+            $fcm = app(FCMService::class);
+
+            $data = [
+                'todo_id' => (string) $todo->id,
+                'assigner_id' => (string) $request->user()->id,
+            ];
+
+            $result = $fcm->sendToTokens(
+                $tokens,
+                'New Todo Assigned',
+                "You were Unassigned to: {$todoTitle}",
+                $data
+            );
+
+
+            // optional: log $result or act on result
+        }
         return response([
             'message' => "$userEmail unassigned",
-        ], 201);   
+            "result" => $result
+        ], 201);
     }
 
-    public function updateCompleteTodo(Todo $todo, Request $request) {
+    public function updateCompleteTodo(Todo $todo, Request $request)
+    {
         $userEmail = $request->user()->email;
         $request->validate(['completed' => 'required|boolean']);
         $completed = $request->completed;
@@ -115,7 +157,6 @@ class AssignTodoController extends Controller
         Mail::to($assignerMail)->send(new AssignCompleteNotice($userEmail, $assignerMail, $todoTitle, $completed));
         return response([
             'message' => $completed ?  "marked as completed" : "marked as incomplete",
-        ], 201);   
+        ], 201);
     }
-
 }
